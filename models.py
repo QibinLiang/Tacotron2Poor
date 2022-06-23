@@ -4,9 +4,6 @@ import time
 from torch.autograd import Variable
 from torchinfo import summary
 from pytorch_lightning import LightningModule
-from torch.utils.data import DataLoader
-from torch.utils.data import Dataset
-
 
 class NormConv(tr.nn.Module):
     def __init__(self, in_channel, out_channel, kernal_size, stride, nums_conv=3):
