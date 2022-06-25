@@ -175,7 +175,7 @@ class post_net(tr.nn.Module):
 
 
 class TacoDecoder(tr.nn.Module):
-    def __init__(self, att_dim=128, enc_dim=512, n_mels=80, frames_per_step=2, prenet_dim=256, lstm_dec_dim=1024,
+    def __init__(self, att_dim=128, enc_dim=512, n_mels=80, frames_per_step=1, prenet_dim=256, lstm_dec_dim=1024,
                  lstm_att_dim=1024):
         super(TacoDecoder, self).__init__()
 
@@ -243,17 +243,18 @@ class TacoDecoder(tr.nn.Module):
 
         # compute the stop token
         stop_token = self.stop_proj(proj_in)
+        stop_token = tr.sigmoid(stop_token)
         return mel_out, stop_token
 
-    def forward(self, value):
+    def forward(self, value, query):
         self.init_parameters(value)
-        processed_value = self.prenet(value)
+        processed_query = self.prenet(query)
 
         mel_outputs = []
         stop_tokens = []
         dec_idx = 0
-        while len(mel_outputs) < value.shape[1]:
-            mel_out, stop_token = self.decode_step(processed_value[:, dec_idx, :])
+        while len(mel_outputs) < processed_query.shape[1]:
+            mel_out, stop_token = self.decode_step(processed_query[:, dec_idx, :])
             mel_outputs.append(mel_out.unsqueeze(1))
             stop_tokens.append(stop_token.unsqueeze(1))
             dec_idx += 1
@@ -263,15 +264,25 @@ class TacoDecoder(tr.nn.Module):
 
 
 class Tacotron(tr.nn.Module):
-    def __init__(self, n_mel=80, frames_per_step=2):
+    def __init__(self, n_mel=80, frames_per_step=1):
         super(Tacotron, self).__init__()
         self.encoder = TacoEncoder()
         self.decoder = TacoDecoder()
         self.postnet = post_net(n_mel * frames_per_step)
 
-    def forward(self, tokens, tokens_len):
+    def forward(self, tokens, tokens_len, mel_spec):
         enc_out = self.encoder(tokens, tokens_len)
-        mel_outputs, stop_tokens = self.decoder(enc_out)
+        mel_outputs, stop_tokens = self.decoder(mel_spec)
         # using the postnet to fit the residual of mel_outputs
         mel_outputs_res = mel_outputs + self.postnet(mel_outputs)
         return mel_outputs, mel_outputs_res, stop_tokens
+
+    def config_optimizer(self):
+        optimizer = tr.optim.Adam(self.parameters, lr=0.001, eps=1e-6, weight_decay=1e-6)
+        return optimizer
+
+    def training_step(self, train_batch, batch_idx):
+        padded_mel, target_stop, wrd, wrd_len = train_batch
+
+
+
