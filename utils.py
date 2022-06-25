@@ -14,7 +14,9 @@ class CustomDataset(Dataset):
         f = open(json_path)
         self.data = json.load(f)
         self.data = [(key, self.data[key]) for key in self.data.keys()]
-        self.fbank = T.MelSpectrogram(f_min=125, f_max=7600, n_mels=n_mels)
+        self.fbank = T.MelSpectrogram(sample_rate=16000, win_length=800, hop_length=200, n_fft=1024, n_mels=n_mels, f_min=125,
+                                   f_max=7600, normalized='slaney')
+        #self.fbank = T.MelSpectrogram(f_min=125, f_max=7600, n_mels=n_mels, normalized=True)
         self.n_mels = n_mels
 
     def __len__(self):
