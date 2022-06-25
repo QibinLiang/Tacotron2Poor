@@ -2,8 +2,6 @@ import torch as tr
 import numpy as np
 import time
 from torch.autograd import Variable
-from torchinfo import summary
-from pytorch_lightning import LightningModule
 
 
 class NormConv(tr.nn.Module):
@@ -184,7 +182,7 @@ class TacoDecoder(tr.nn.Module):
         self.prenet_dim = prenet_dim
         self.n_mels = n_mels
         self.frames_per_step = frames_per_step
-        self.prenet = pre_net(enc_dim, prenet_dim)
+        self.prenet = pre_net(n_mels, prenet_dim)
         self.enc_dim = enc_dim
         """
         Lstm_att:
@@ -206,19 +204,27 @@ class TacoDecoder(tr.nn.Module):
     def init_parameters(self, value):
         batch_size, max_time, embed_dim = value.shape
         self.value = value
-        self.lstm_att_h = Variable(tr.zeros(batch_size, self.lstm_att_dim))
-        self.lstm_att_c = Variable(tr.zeros(batch_size, self.lstm_att_dim))
-        self.lstm_dec_h = Variable(tr.zeros(batch_size, self.lstm_dec_dim))
-        self.lstm_dec_c = Variable(tr.zeros(batch_size, self.lstm_dec_dim))
+        self.lstm_att_h = tr.zeros(batch_size, self.lstm_att_dim, device='cuda')
+        self.lstm_att_c = tr.zeros(batch_size, self.lstm_att_dim, device='cuda')
+        self.lstm_dec_h = tr.zeros(batch_size, self.lstm_dec_dim, device='cuda')
+        self.lstm_dec_c = tr.zeros(batch_size, self.lstm_dec_dim, device='cuda')
 
-        self.attention_weight_cum = Variable(tr.zeros(batch_size, 1, max_time))
-        self.attention_weight = Variable(tr.zeros(batch_size, 1, max_time))
-        self.attention_context = Variable(tr.zeros(batch_size, self.enc_dim))
+        self.attention_weight_cum = tr.zeros(batch_size, 1, max_time, device='cuda')
+        self.attention_weight = tr.zeros(batch_size, 1, max_time, device='cuda')
+        self.attention_context = tr.zeros(batch_size, self.enc_dim, device='cuda')
 
     def decode_step(self, dec_in):
         """
         dec_in : (batch_size, 1, prenet_dim)
         self.attention_context: (batch_soze, 1, enc_dim)
+
+        steps:
+            1. concat the output of prenet and encoder
+            2. feed the compressed features to the first lstm layer
+            3. concat the attention output and prenet output
+            3. feed the compressed features to the second lstm layer
+            4. project the output of the second lstm layer
+            5. predict stop_state of the output of the second lstm layer
         """
         # compute the lstm_att
         cat_lstm_att_in = tr.cat([dec_in, self.attention_context], dim=-1)
@@ -233,7 +239,7 @@ class TacoDecoder(tr.nn.Module):
         self.attention_weight_cum += self.attention_weight
 
         # compute the lstm_dec
-        cat_lstm_dec_in = tr.cat([self.attention_context, self.lstm_att_h], dim=-1)
+        cat_lstm_dec_in = tr.cat([self.lstm_att_h, self.attention_context], dim=-1)
         self.lstm_dec_h, self.lstm_dec_c = self.lstm_dec(cat_lstm_dec_in,
                                                          (self.lstm_dec_h, self.lstm_dec_c))
 
@@ -260,6 +266,7 @@ class TacoDecoder(tr.nn.Module):
             dec_idx += 1
         mel_outputs = tr.cat(mel_outputs, dim=1)
         stop_tokens = tr.cat(stop_tokens, dim=1)
+        stop_tokens = tr.sigmoid(stop_tokens)
         return mel_outputs, stop_tokens
 
 
@@ -272,17 +279,12 @@ class Tacotron(tr.nn.Module):
 
     def forward(self, tokens, tokens_len, mel_spec):
         enc_out = self.encoder(tokens, tokens_len)
-        mel_outputs, stop_tokens = self.decoder(mel_spec)
+        mel_outputs, stop_tokens = self.decoder(enc_out, mel_spec)
         # using the postnet to fit the residual of mel_outputs
+        mel_outputs = mel_outputs.permute(0, 2, 1)
         mel_outputs_res = mel_outputs + self.postnet(mel_outputs)
         return mel_outputs, mel_outputs_res, stop_tokens
 
-    def config_optimizer(self):
-        optimizer = tr.optim.Adam(self.parameters, lr=0.001, eps=1e-6, weight_decay=1e-6)
-        return optimizer
-
-    def training_step(self, train_batch, batch_idx):
-        padded_mel, target_stop, wrd, wrd_len = train_batch
 
 
 
