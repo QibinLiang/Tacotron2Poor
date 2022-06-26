@@ -84,6 +84,7 @@ class LocationalAttention(tr.nn.Module):
         self.query_proj = tr.nn.Linear(dec_dim, att_dim, bias=False)
         self.value_proj = tr.nn.Linear(enc_dim, att_dim, bias=False)
         self.score = tr.nn.Linear(att_dim, 1, bias=False)
+        self.mask_value = -float("inf")
 
     def get_location_info(self, location_info_cat):
         # location_info_cat (batch_size, 2, time_step)
@@ -98,7 +99,6 @@ class LocationalAttention(tr.nn.Module):
         # query_transformed (batch_size, 1,  att_dim)
         query_transformed = self.query_proj(query)
         # value_transformed (batch_size, time_step, att_dim)
-
         value_transformed = self.value_proj(value)
         # location_info (batch_size, time_step, att_dim)
         location_info = self.get_location_info(location_info_cat)
@@ -110,14 +110,15 @@ class LocationalAttention(tr.nn.Module):
         ))
         return info_weights, value_transformed
 
-    def forward(self, query, value, location_info_cat):
+    def forward(self, query, value, location_info_cat, target_len):
         info_weights, value_transformed = self.get_info_weights(query, value, location_info_cat)
         # att_weights (batch_size, time_step)
         info_weights = info_weights.squeeze()
+        info_weights = info_weights.masked_fill(target_len, self.mask_value)
         att_weights = tr.nn.functional.softmax(info_weights, dim=1)
         # att_context (batch_size, 1, time_step) * (batch_size, time_step, att_dim) 
         #              -> (batch_size, 1, att_dim)
-        att_context = tr.bmm(info_weights.unsqueeze(1), value)
+        att_context = tr.bmm(att_weights.unsqueeze(1), value)
         att_context = att_context.squeeze(1)
         return att_context, att_weights
 
@@ -213,46 +214,39 @@ class TacoDecoder(tr.nn.Module):
         self.attention_weight = tr.zeros(batch_size, 1, max_time, device='cuda')
         self.attention_context = tr.zeros(batch_size, self.enc_dim, device='cuda')
 
-    def decode_step(self, dec_in):
+    def decode_step(self, dec_in, target_len):
         """
         dec_in : (batch_size, 1, prenet_dim)
         self.attention_context: (batch_soze, 1, enc_dim)
-
-        steps:
-            1. concat the output of prenet and encoder
-            2. feed the compressed features to the first lstm layer
-            3. concat the attention output and prenet output
-            3. feed the compressed features to the second lstm layer
-            4. project the output of the second lstm layer
-            5. predict stop_state of the output of the second lstm layer
         """
         # compute the lstm_att
         cat_lstm_att_in = tr.cat([dec_in, self.attention_context], dim=-1)
         self.lstm_att_h, self.lstm_att_c = self.lstm_att(cat_lstm_att_in,
                                                          (self.lstm_att_h, self.lstm_att_c))
 
+        self.lstm_att_h = tr.dropout(self.lstm_att_h, 0.5, True)
         # compute the attention_context and weights
         cat_attiont_weight = tr.cat([self.attention_weight, self.attention_weight_cum], dim=1)
         self.attention_context, self.attention_weight = self.attention(self.lstm_att_h,
-                                                                       self.value, cat_attiont_weight)
+                                                                       self.value, cat_attiont_weight, target_len)
         self.attention_weight = self.attention_weight.unsqueeze(1)
         self.attention_weight_cum += self.attention_weight
 
         # compute the lstm_dec
-        cat_lstm_dec_in = tr.cat([self.lstm_att_h, self.attention_context], dim=-1)
+        cat_lstm_dec_in = tr.cat([self.attention_context, self.lstm_att_h], dim=-1)
         self.lstm_dec_h, self.lstm_dec_c = self.lstm_dec(cat_lstm_dec_in,
                                                          (self.lstm_dec_h, self.lstm_dec_c))
 
+        self.lstm_dec_h = tr.dropout(self.lstm_dec_h, 0.5, True)
         # project the lstm_dec output to mel*time dimension
         proj_in = tr.cat([self.lstm_dec_h, self.attention_context], dim=-1)
         mel_out = self.mel_proj(proj_in)
 
         # compute the stop token
         stop_token = self.stop_proj(proj_in)
-        stop_token = tr.sigmoid(stop_token)
         return mel_out, stop_token
 
-    def forward(self, value, query):
+    def forward(self, value, query, target_len):
         self.init_parameters(value)
         processed_query = self.prenet(query)
 
@@ -260,7 +254,7 @@ class TacoDecoder(tr.nn.Module):
         stop_tokens = []
         dec_idx = 0
         while len(mel_outputs) < processed_query.shape[1]:
-            mel_out, stop_token = self.decode_step(processed_query[:, dec_idx, :])
+            mel_out, stop_token = self.decode_step(processed_query[:, dec_idx, :], target_len)
             mel_outputs.append(mel_out.unsqueeze(1))
             stop_tokens.append(stop_token.unsqueeze(1))
             dec_idx += 1
@@ -277,9 +271,9 @@ class Tacotron(tr.nn.Module):
         self.decoder = TacoDecoder()
         self.postnet = post_net(n_mel * frames_per_step)
 
-    def forward(self, tokens, tokens_len, mel_spec):
+    def forward(self, tokens, tokens_len, mel_spec, target_len):
         enc_out = self.encoder(tokens, tokens_len)
-        mel_outputs, stop_tokens = self.decoder(enc_out, mel_spec)
+        mel_outputs, stop_tokens = self.decoder(enc_out, mel_spec, target_len)
         # using the postnet to fit the residual of mel_outputs
         mel_outputs = mel_outputs.permute(0, 2, 1)
         mel_outputs_res = mel_outputs + self.postnet(mel_outputs)
