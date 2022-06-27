@@ -20,7 +20,7 @@ This project uses the TIMIT dataset to train Tacotron2 model and the data will b
 
 ### Additional functionality
 - [ ] Dynamic sampling (partly shuffle the sorted dataset)
-- [ ] Distributed training
+- [ ] Parallel training
 - [ ] Hyper parameters loader
 - [x] Checkpoint saving and loading
 - [ ] Data Normalization (Currently using the json file created by Speechbrain)
