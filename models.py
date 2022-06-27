@@ -1,28 +1,48 @@
-import torch as tr
-import numpy as np
-import time
-from torch.autograd import Variable
 
+"""This is the implementation for Tacotron2 which is a model generates
+ the mel-spectrogram form text. Paper https://arxiv.org/pdf/1712.05884.pdf
+"""
+
+import torch as tr
 
 class NormConv(tr.nn.Module):
-    def __init__(self, in_channel, out_channel, kernal_size, stride, nums_conv=3):
+
+    def __init__(self, in_channel, out_channel, kernel_size, stride, nums_conv=3):
+
+        """ The normalized convolutional network that a Conv1d block followed
+            by a BatchNormalization, ReLU and a Dropout layer.
+
+            Parameters
+            ----------
+            in_channel :
+                see 'in_channel' argument in torch.nn.Conv1d
+            out_channel :
+                see 'out_channel' argument in torch.nn.Conv1d
+            kernel_size :
+                see 'kernel_size' argument in torch.nn.Conv1d
+            stride :
+                see 'stride' argument in torch.nn.Conv1d
+            nums_conv :
+                the number of stacked conv1d blocks
+        """
+
         super(NormConv, self).__init__()
         self.in_channel = in_channel
         self.out_channel = out_channel
-        self.kernal_size = kernal_size
+        self.kernel_size = kernel_size
         self.stride = stride
         self.nums_conv = nums_conv
         self.out_channels = [self.out_channel for i in range(self.nums_conv)]
         self.in_channels = [self.in_channel] + self.out_channels[:-1]
         modules_list = []
-        pad = int((kernal_size - stride) / 2)
+        pad = int((kernel_size - stride) / 2)
 
         for i in range(nums_conv):
             cnn_block = tr.nn.Sequential(
                 tr.nn.Conv1d(
                     self.in_channels[i],
                     self.out_channels[i],
-                    self.kernal_size,
+                    self.kernel_size,
                     self.stride,
                     padding=pad
                 ),
@@ -41,21 +61,46 @@ class NormConv(tr.nn.Module):
 
 
 class TacoEncoder(tr.nn.Module):
-    def __init__(self, embeding_size=512,
-                 kernal_shape={'out_channel': 512, 'kernal_size': 5, 'stride': 1},
+    def __init__(self, embedding_size=512,
+                 kernel_shape={'out_channel': 512, 'kernel_size': 5, 'stride': 1},
                  lstm_unit_size=256):
+
+        """This is the encoder of Tacotron2. This module consist of an embedding module,
+        a normalized convolution module and a bi-direction LSTM model.
+        
+        Parameters
+        ----------
+        embedding_size : 
+            the size of the embedding of tokens
+        kernel_shape :
+            the kernel size of the convolution module. See class 'NormConv'
+        lstm_unit_size :
+            the dimension of the hidden features of bi-direction LSTM
+        """
+
         super(TacoEncoder, self).__init__()
 
-        self.embeding_size = embeding_size
-        # channels, kernal_size, stride_len
-        self.kernal_shape = kernal_shape
+        self.embedding_size = embedding_size
+        # channels, kernel_size, stride_len
+        self.kernel_shape = kernel_shape
         self.lstm_unit_size = lstm_unit_size
 
-        self.char_embedding = tr.nn.Embedding(31, self.embeding_size)
-        self.conv_layer = NormConv(self.embeding_size, **self.kernal_shape, nums_conv=3)
+        self.char_embedding = tr.nn.Embedding(31, self.embedding_size)
+        self.conv_layer = NormConv(self.embedding_size, **self.kernel_shape, nums_conv=3)
         self.bi_lstm = tr.nn.LSTM(512, self.lstm_unit_size, bidirectional=True)
 
     def forward(self, x, x_len):
+        """
+
+        Parameters
+        ----------
+        x :
+        x_len :
+
+        Returns
+        -------
+
+        """
         x = self.char_embedding(x)
         x = x.permute(0, 2, 1)
         self.conv_layer(x)
@@ -71,15 +116,28 @@ class TacoEncoder(tr.nn.Module):
 
 class LocationalAttention(tr.nn.Module):
     def __init__(self, enc_dim=512, dec_dim=1024, att_dim=128,
-                 conv_filter_dim=32, conv_kernal_size=31, conv_stride=1):
+                 conv_filter_dim=32, conv_kernel_size=31, conv_stride=1):
+        """Extract the feature by using the location attention mechanism
+        Parameters
+        ----------
+        enc_dim :
+            Encoder dimension. See 'TacoEncoder'
+        dec_dim :
+            The dimension of the output of decoder. In this model, the
+            decoder is the lstm following the attention module.
+        att_dim :
+            The output dimension of the attention
+        conv_filter_dim :
+            The number of the out_channel of the convolutional layer of the attention
+        conv_kernel_size :
+            Kernel size of convolutional layer of the attention. See 'torch.nn.Conv1d'
+        conv_stride :
+            Stride of the convolutional layer of the attention. See 'torch.nn.Conv1d'
+        """
         super(LocationalAttention, self).__init__()
-        """
-            query: the output of decoder #(batch, dec_dim)
-            value: the output of encoder #(batch, time_step, enc_dim)
-        """
         self.conv = tr.nn.Conv1d(2, conv_filter_dim,
-                                 conv_kernal_size, conv_stride,
-                                 padding=int((conv_kernal_size - conv_stride) / 2))
+                                 conv_kernel_size, conv_stride,
+                                 padding=int((conv_kernel_size - conv_stride) / 2))
         self.location_linear = tr.nn.Linear(conv_filter_dim, att_dim, bias=False)
         self.query_proj = tr.nn.Linear(dec_dim, att_dim, bias=False)
         self.value_proj = tr.nn.Linear(enc_dim, att_dim, bias=False)
@@ -111,10 +169,32 @@ class LocationalAttention(tr.nn.Module):
         return info_weights, value_transformed
 
     def forward(self, query, value, location_info_cat, target_len):
+        """
+        Parameters
+        ----------
+        query : -> (B, dec_dim)
+            The output of decoder
+        value :  -> (B, T_max, enc_dim)
+            The output of encoder
+        location_info_cat : -> (B, 2, T_max)
+            The concatenation feature of location information and cumulated
+            location information
+        target_len : -> (B, T_max)
+            The ground truth length of the target.
+        Returns
+        -------
+        att_context : -> (batch_size, 1, att_dim)
+            The attention context of the current step, which uses the feature
+            from LSTM decoder as well as combines the information from the
+            locational attention mechanism.
+        att_weights : -> (batch_size, 1, T_max)
+            The weighted sequence for each time step. It represents the
+            information of the locational attention.
+        """
         info_weights, value_transformed = self.get_info_weights(query, value, location_info_cat)
-        # att_weights (batch_size, time_step)
         info_weights = info_weights.squeeze()
         info_weights = info_weights.masked_fill(target_len, self.mask_value)
+        # att_weights (batch_size, time_step)
         att_weights = tr.nn.functional.softmax(info_weights, dim=1)
         # att_context (batch_size, 1, time_step) * (batch_size, time_step, att_dim) 
         #              -> (batch_size, 1, att_dim)
@@ -139,24 +219,24 @@ class pre_net(tr.nn.Module):
 
 
 class post_net(tr.nn.Module):
-    def __init__(self, mel_dim, post_net_hidden=512, kernal_size=5, stride=1, nums_conv=5):
+    def __init__(self, mel_dim, post_net_hidden=512, kernel_size=5, stride=1, nums_conv=5):
         super(post_net, self).__init__()
         self.in_channel = mel_dim
         self.out_channel = post_net_hidden
-        self.kernal_size = kernal_size
+        self.kernel_size = kernel_size
         self.stride = stride
         self.nums_conv = nums_conv
         self.out_channels = [self.out_channel for i in range(self.nums_conv - 1)] + [self.in_channel]
         self.in_channels = [self.in_channel] + self.out_channels[:-1]
         modules_list = []
-        pad = int((kernal_size - stride) / 2)
+        pad = int((kernel_size - stride) / 2)
 
         for i in range(nums_conv):
             cnn_block = tr.nn.Sequential(
                 tr.nn.Conv1d(
                     self.in_channels[i],
                     self.out_channels[i],
-                    self.kernal_size,
+                    self.kernel_size,
                     self.stride,
                     padding=pad
                 ),
