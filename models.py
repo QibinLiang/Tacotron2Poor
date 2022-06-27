@@ -1,9 +1,9 @@
-
 """This is the implementation for Tacotron2 which is a model generates
  the mel-spectrogram form text. Paper https://arxiv.org/pdf/1712.05884.pdf
 """
 
 import torch as tr
+
 
 class NormConv(tr.nn.Module):
 
@@ -64,7 +64,6 @@ class TacoEncoder(tr.nn.Module):
     def __init__(self, embedding_size=512,
                  kernel_shape={'out_channel': 512, 'kernel_size': 5, 'stride': 1},
                  lstm_unit_size=256):
-
         """This is the encoder of Tacotron2. This module consist of an embedding module,
         a normalized convolution module and a bi-direction LSTM model.
         
@@ -89,6 +88,27 @@ class TacoEncoder(tr.nn.Module):
         self.conv_layer = NormConv(self.embedding_size, **self.kernel_shape, nums_conv=3)
         self.bi_lstm = tr.nn.LSTM(512, self.lstm_unit_size, bidirectional=True)
 
+    def inference(self, x):
+        """ The batch size of inference is one which means it only
+        predicts one mel-spectrogram a time and doesn't need to pad
+        the sequence
+
+        Parameters
+        ----------
+        x :
+
+        Returns
+        -------
+
+        """
+        x = self.char_embedding(x)
+        x = x.permute(0, 2, 1)
+        self.conv_layer(x)
+        x = x.permute(0, 2, 1)
+        self.bi_lstm.flatten_parameters()
+        x, _ = self.bi_lstm(x)
+        return x
+
     def forward(self, x, x_len):
         """
 
@@ -110,7 +130,6 @@ class TacoEncoder(tr.nn.Module):
         self.bi_lstm.flatten_parameters()
         x, _ = self.bi_lstm(x)
         x, x_len = tr.nn.utils.rnn.pad_packed_sequence(x, batch_first=True)
-
         return x
 
 
@@ -326,6 +345,21 @@ class TacoDecoder(tr.nn.Module):
         stop_token = self.stop_proj(proj_in)
         return mel_out, stop_token
 
+    def inference(self, value):
+        start_frame = tr.zero(value.shape[0], self.n_mels * self.frames_per_step)
+        mel_outputs = []
+        # limit the length of the predicted mel-spectrogram
+        max_inference_len = value.shape[1] * 20
+        while True:
+            processed_query = self.prenet(start_frame)
+            current_len = tr.ones(1, len(mel_outputs))
+            mel_out, stop_token = self.decode_step(processed_query, current_len)
+            mel_outputs.append(mel_out.unsqueeze(1))
+            if tr.sigmoid(stop_token) < 0.5 or len(mel_outputs) > max_inference_len:
+                mel_outputs = tr.cat(mel_outputs, dim=1)
+                return mel_outputs
+        return None
+
     def forward(self, value, query, target_len):
         self.init_parameters(value)
         processed_query = self.prenet(query)
@@ -351,6 +385,13 @@ class Tacotron(tr.nn.Module):
         self.decoder = TacoDecoder()
         self.postnet = post_net(n_mel * frames_per_step)
 
+    def inference(self, tokens):
+        enc_out = self.encoder.inference(tokens)
+        mel_outputs = self.decoder.inference(enc_out)
+        mel_outputs = mel_outputs.permute(0, 2, 1)
+        mel_outputs_res = mel_outputs + self.postnet(mel_outputs)
+        return mel_outputs, mel_outputs_res
+
     def forward(self, tokens, tokens_len, mel_spec, target_len):
         enc_out = self.encoder(tokens, tokens_len)
         mel_outputs, stop_tokens = self.decoder(enc_out, mel_spec, target_len)
@@ -358,7 +399,3 @@ class Tacotron(tr.nn.Module):
         mel_outputs = mel_outputs.permute(0, 2, 1)
         mel_outputs_res = mel_outputs + self.postnet(mel_outputs)
         return mel_outputs, mel_outputs_res, stop_tokens
-
-
-
-

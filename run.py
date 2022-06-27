@@ -5,6 +5,7 @@ import torch as tr
 import logging
 import speechbrain
 from argparse import ArgumentParser
+import config
 
 logger = logging.getLogger(__name__)
 
@@ -95,7 +96,7 @@ def get_mask_from_lengths(lengths, max_len=None):
 
 def train(train_json, train_logger, epochs=120, load=False):
     dataset = utils.CustomDataset(train_json)
-    dataloader = DataLoader(dataset, batch_size=12, shuffle=True, collate_fn=utils.collate_fn_pad)
+    dataloader = DataLoader(dataset, batch_size=64, shuffle=True, collate_fn=utils.collate_fn_pad)
     device = tr.device("cuda" if tr.cuda.is_available() else "cpu")
 
     taco = models.Tacotron()
@@ -140,8 +141,22 @@ def train(train_json, train_logger, epochs=120, load=False):
             'optimizer_state_dict': optimizer.state_dict(),
             'loss': loss,
         }, 'model.pt')
-    return
 
+def inference(text_path):
+    device = tr.device("cuda" if tr.cuda.is_available() else "cpu")
+    taco = models.Tacotron()
+
+    f = open(text_path)
+    text = f.readline()
+    tokens = utils.character_tokenizer(text, config.token2id)
+    taco = models.Tacotron()
+    taco = taco.to(device)
+
+    checkpoint = tr.load('model.pt')
+    taco.load_state_dict(checkpoint['model_state_dict'])
+    taco.eval()
+    mel_out, mel_out_res = taco.inference(tokens)
+    return mel_out, mel_out_res
 
 # To get arguments from commandline
 def get_args():
@@ -169,6 +184,10 @@ if __name__ == "__main__":
         assert data_path or json_path, "either data path or json path should be given"
     else:
         assert text_path, "text path should be given if the mode is inference"
+    if is_train:
+        train_logger = speechbrain.utils.train_logger.FileTrainLogger(log_path)
+        train(json_path, train_logger)
+    else:
+        inference(text_path)
 
-    train_logger = speechbrain.utils.train_logger.FileTrainLogger(log_path)
-    train(json_path, train_logger)
+
