@@ -95,7 +95,7 @@ def get_mask_from_lengths(lengths, max_len=None):
 
 def train(train_json, train_logger, epochs=120, load=False):
     dataset = utils.CustomDataset(train_json)
-    dataloader = DataLoader(dataset, batch_size=64, shuffle=True, collate_fn=utils.collate_fn_pad)
+    dataloader = DataLoader(dataset, batch_size=12, shuffle=True, collate_fn=utils.collate_fn_pad)
     device = tr.device("cuda" if tr.cuda.is_available() else "cpu")
 
     taco = models.Tacotron()
@@ -140,7 +140,7 @@ def train(train_json, train_logger, epochs=120, load=False):
             'optimizer_state_dict': optimizer.state_dict(),
             'loss': loss,
         }, 'model.pt')
-        return
+    return
 
 
 # To get arguments from commandline
