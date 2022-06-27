@@ -16,12 +16,12 @@ This project uses the TIMIT dataset to train Tacotron2 model and the data will b
 - [ ] Test step
 - [ ] Inference
 - [ ] WaveNet
-- [ ] logger
+- [x] logger
 
 ### Additional functionality
 - [ ] Dynamic sampling (partly shuffle the sorted dataset)
 - [ ] Distributed training
 - [ ] Hyper parameters loader
-- [ ] Checkpoint saving and loading
+- [x] Checkpoint saving and loading
 - [ ] Data Normalization (Currently using the json file created by Speechbrain)
 - [ ] Griffin-Lim
