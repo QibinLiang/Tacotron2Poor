@@ -95,7 +95,7 @@ def get_mask_from_lengths(lengths, max_len=None):
 
 def train(train_json, train_logger, epochs=120, load=False):
     dataset = utils.CustomDataset(train_json)
-    dataloader = DataLoader(dataset, batch_size=8, shuffle=True, collate_fn=utils.collate_fn_pad)
+    dataloader = DataLoader(dataset, batch_size=64, shuffle=True, collate_fn=utils.collate_fn_pad)
     device = tr.device("cuda" if tr.cuda.is_available() else "cpu")
 
     taco = models.Tacotron()
@@ -149,7 +149,7 @@ def get_args():
     parser.add_argument('--train', type=bool, default=True, help='whether the mode is training or not')
     parser.add_argument('--json', type=str, default=None, help='the path of json file')
     parser.add_argument('--data', type=str, default=None, help='the path of dataset')
-    parser.add_argument('--text', type=str, help='the path of text for inference')
+    parser.add_argument('--text', type=str, default=None, help='the path of text for inference')
     parser.add_argument('--log', type=str, help='the path of logger file',
                         default='train_log.txt')
     parser.add_argument('--load', type=bool, default=None, help='continue the training')
@@ -166,7 +166,7 @@ if __name__ == "__main__":
     log_path = args.log
 
     if is_train:
-        assert data_path and json_path, "either data path or json path should be given"
+        assert data_path or json_path, "either data path or json path should be given"
     else:
         assert text_path, "text path should be given if the mode is inference"
 
