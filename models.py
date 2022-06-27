@@ -4,6 +4,8 @@
 
 import torch as tr
 
+import utils
+
 
 class NormConv(tr.nn.Module):
 
@@ -102,8 +104,9 @@ class TacoEncoder(tr.nn.Module):
 
         """
         x = self.char_embedding(x)
-        x = x.permute(0, 2, 1)
-        self.conv_layer(x)
+        x = x.unsqueeze(0)
+        x = x.transpose(1, 2)
+        x = self.conv_layer(x)
         x = x.permute(0, 2, 1)
         self.bi_lstm.flatten_parameters()
         x, _ = self.bi_lstm(x)
@@ -123,7 +126,7 @@ class TacoEncoder(tr.nn.Module):
         """
         x = self.char_embedding(x)
         x = x.permute(0, 2, 1)
-        self.conv_layer(x)
+        x = self.conv_layer(x)
 
         x = x.permute(0, 2, 1)
         x = tr.nn.utils.rnn.pack_padded_sequence(x, x_len, enforce_sorted=False, batch_first=True)
@@ -346,13 +349,14 @@ class TacoDecoder(tr.nn.Module):
         return mel_out, stop_token
 
     def inference(self, value):
-        start_frame = tr.zero(value.shape[0], self.n_mels * self.frames_per_step)
+        self.init_parameters(value)
+        start_frame = tr.zeros(value.shape[0], self.n_mels * self.frames_per_step, device='cuda')
         mel_outputs = []
         # limit the length of the predicted mel-spectrogram
         max_inference_len = value.shape[1] * 20
         while True:
             processed_query = self.prenet(start_frame)
-            current_len = tr.ones(1, len(mel_outputs))
+            current_len = utils.get_mask_from_lengths(tr.tensor([value.shape[1]],device='cuda'))
             mel_out, stop_token = self.decode_step(processed_query, current_len)
             mel_outputs.append(mel_out.unsqueeze(1))
             if tr.sigmoid(stop_token) < 0.5 or len(mel_outputs) > max_inference_len:
