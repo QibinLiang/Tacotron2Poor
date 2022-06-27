@@ -75,9 +75,24 @@ def collate_fn_pad(batch):
     batch = mel_batch, target_lens, target_stop, wrd, wrd_len
     return batch
 
-
-#dataset = CustomDataset('dev.json')
-#dataloader = DataLoader(dataset, batch_size=10, shuffle=True, collate_fn=collate_fn_pad)
-#mel_outputs, mel_outputs_res, stop_tokens = batch = next(iter(dataloader))
-
-#print(mel_outputs.shape, mel_outputs_res.shape, stop_tokens.shape)
+def get_mask_from_lengths(lengths, max_len=None):
+    """Creates a mask from a tensor of lengths
+    Arguments
+    ---------
+    lengths: torch.Tensor
+        a tensor of sequence lengths
+    Returns
+    -------
+    mask: torch.Tensor
+        the mask
+    max_len: int
+        The maximum length, i.e. the last dimension of
+        the mask tensor. If not provided, it will be
+        calculated automatically
+    """
+    if max_len is None:
+        max_len = tr.max(lengths).item()
+    ids = tr.arange(0, max_len, device=lengths.device, dtype=lengths.dtype)
+    mask = (ids < lengths.unsqueeze(1)).byte()
+    mask = tr.le(mask, 0)
+    return mask
