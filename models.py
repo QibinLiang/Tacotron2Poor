@@ -86,7 +86,7 @@ class TacoEncoder(tr.nn.Module):
         self.kernel_shape = kernel_shape
         self.lstm_unit_size = lstm_unit_size
 
-        self.char_embedding = tr.nn.Embedding(31, self.embedding_size)
+        self.char_embedding = tr.nn.Embedding(29, self.embedding_size)
         self.conv_layer = NormConv(self.embedding_size, **self.kernel_shape, nums_conv=3)
         self.bi_lstm = tr.nn.LSTM(512, self.lstm_unit_size, bidirectional=True)
 
@@ -316,6 +316,9 @@ class TacoDecoder(tr.nn.Module):
         self.attention_weight = tr.zeros(batch_size, 1, max_time, device='cuda')
         self.attention_context = tr.zeros(batch_size, self.enc_dim, device='cuda')
 
+        self.start_frame = tr.zeros(value.shape[0], 1, self.n_mels * self.frames_per_step, device='cuda')
+
+
     def decode_step(self, dec_in, target_len):
         """
         dec_in : (batch_size, 1, prenet_dim)
@@ -350,24 +353,24 @@ class TacoDecoder(tr.nn.Module):
 
     def inference(self, value):
         self.init_parameters(value)
-        start_frame = tr.zeros(value.shape[0], self.n_mels * self.frames_per_step, device='cuda')
         mel_outputs = []
         # limit the length of the predicted mel-spectrogram
         max_inference_len = value.shape[1] * 20
         while True:
-            processed_query = self.prenet(start_frame)
-            current_len = utils.get_mask_from_lengths(tr.tensor([value.shape[1]],device='cuda'))
+            processed_query = self.prenet(self.start_frame)
+            current_len = utils.get_mask_from_lengths(tr.tensor([value.shape[1]], device='cuda'))
             mel_out, stop_token = self.decode_step(processed_query, current_len)
             mel_outputs.append(mel_out.unsqueeze(1))
             if tr.sigmoid(stop_token) < 0.5 or len(mel_outputs) > max_inference_len:
+            #if len(mel_outputs) > max_inference_len:
                 mel_outputs = tr.cat(mel_outputs, dim=1)
                 return mel_outputs
         return None
 
     def forward(self, value, query, target_len):
         self.init_parameters(value)
+        query = tr.cat([self.start_frame, query], dim=1)
         processed_query = self.prenet(query)
-
         mel_outputs = []
         stop_tokens = []
         dec_idx = 0
