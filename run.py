@@ -9,6 +9,8 @@ import config
 import matplotlib.pyplot as plt
 from torchaudio import transforms as T
 import torchaudio
+import librosa.display
+
 logger = logging.getLogger(__name__)
 
 
@@ -80,11 +82,11 @@ def train(train_json, train_logger, epochs=120, load=False):
 
     taco = models.Tacotron()
     taco = taco.to(device)
-    optimizer = tr.optim.Adam(taco.parameters(), lr=0.001, eps=1e-6, weight_decay=1e-6)
+    optimizer = tr.optim.Adam(taco.parameters(), lr=0.002, eps=1e-6, weight_decay=1e-6)
 
     # if load==True, it will load the model and continue the training.
     if load:
-        checkpoint = tr.load('model.pt')
+        checkpoint = tr.load('model1.pt')
         taco.load_state_dict(checkpoint['model_state_dict'])
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         begin_epoch = checkpoint['epoch']
@@ -101,6 +103,13 @@ def train(train_json, train_logger, epochs=120, load=False):
             wrd_len_mask = utils.get_mask_from_lengths(wrd_len).to(device)
             # forward
             mel_out, mel_out_res, stop_token = taco(wrd, wrd_len, mel_batch, wrd_len_mask)
+            # concatenate start frame
+
+            start_frame = tr.zeros(mel_batch.shape[0], 1, 80, device='cuda')
+            mel_batch = tr.cat([start_frame, mel_batch], dim=1)
+
+            start_token = tr.ones((target_stop.shape[0], 1), device='cuda')
+            target_stop = tr.cat([start_token, target_stop], dim=1)
             loss = tacoloss(mel_out, mel_out_res, mel_batch, stop_token, target_stop)
             # clear gradient
             taco.zero_grad()
@@ -119,7 +128,8 @@ def train(train_json, train_logger, epochs=120, load=False):
             'model_state_dict': taco.state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
             'loss': loss,
-        }, 'model.pt')
+        }, 'model1.pt')
+
 
 def inference(text_path):
     device = tr.device("cuda" if tr.cuda.is_available() else "cpu")
@@ -133,11 +143,12 @@ def inference(text_path):
     taco = taco.to(device)
     wrd = wrd.to(device)
 
-    checkpoint = tr.load('model.pt')
+    checkpoint = tr.load('model1.pt')
     taco.load_state_dict(checkpoint['model_state_dict'])
     taco.eval()
     mel_out, mel_out_res = taco.inference(wrd)
     return mel_out, mel_out_res
+
 
 # To get arguments from commandline
 def get_args():
@@ -168,25 +179,27 @@ if __name__ == "__main__":
 
     if is_inference:
         melspec = T.MelSpectrogram(sample_rate=16000, win_length=800, hop_length=200, n_fft=1024, n_mels=80,
-                                      f_min=125,
-                                      f_max=7600, normalized='slaney')
+                                   f_min=125,
+                                   f_max=7600, normalized='slaney')
+        # melspec = T.MelSpectrogram(sample_rate=16000, n_mels=80,
+        #                            f_min=125,
+        #                            f_max=7600)
 
-        target_mel, sr = torchaudio.load("D:\\dataset\\data\\lisa\\data\\timit\\raw\\TIMIT\\TEST\\DR3\\MMWH0\\SX189.WAV")
-        target_mel = melspec(target_mel).squeeze().numpy()
-        print(target_mel.shape)
-        plt.specgram(target_mel, Fs=16000)
+        target_mel, sr = torchaudio.load(
+            "D:\\dataset\\data\\lisa\\data\\timit\\raw\\TIMIT\\TRAIN\\DR5\\FEAR0\\SI1882.WAV")
+        target_mel = melspec(target_mel).squeeze()
+        target_mel = tr.clamp(target_mel, min=0.001).numpy()
+        librosa.display.specshow(target_mel, y_axis='mel', fmax=16000, x_axis='time', hop_length=200, fmin=125)
         plt.savefig('target_mel')
 
         mel, mel_res = inference(text_path)
         print(mel.shape)
         mel = mel.detach().cpu().numpy()[0]
         mel_res = mel_res.detach().cpu().numpy()[0]
-        plt.specgram(mel, Fs=16000)
+        librosa.display.specshow(mel_res, y_axis='mel', fmax=16000, x_axis='time', hop_length=200, fmin=125)
         plt.savefig('mel')
-        plt.specgram(mel_res, Fs=16000)
+        librosa.display.specshow(mel_res, y_axis='mel', fmax=16000, x_axis='time', hop_length=200, fmin=125)
         plt.savefig('mel_res')
     else:
         train_logger = speechbrain.utils.train_logger.FileTrainLogger(log_path)
         train(json_path, train_logger)
-
-
