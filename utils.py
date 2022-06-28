@@ -40,6 +40,7 @@ class CustomDataset(Dataset):
 
     def compute_mel(self, wav, wrd_len, n_mels):
         mel_spec = self.fbank(wav)
+        mel_spec = tr.clamp(mel_spec, min=0.001)
         target_stop = tr.ones(mel_spec.shape[-1])
         target_mel_spec_len = mel_spec.shape[2]
         return mel_spec, target_mel_spec_len, target_stop
@@ -66,7 +67,6 @@ def collate_fn_pad(batch):
     mel_batch = [tr.Tensor(t) for t in padded_mel]
     # pad mels again
     mel_batch = tr.nn.utils.rnn.pad_sequence(mel_batch)
-
     # pad target_stop
     target_stop = tr.nn.utils.rnn.pad_sequence(target_stop,batch_first=True)
     # pad wrd
