@@ -21,3 +21,12 @@
 - [x] 检查点保存与加载
 - [ ] 数据预处理
 - [ ] Griffin-Lim 算法
+
+## 训练
+
+### 配置
+
+使用了E5-2678 cpu以及 Tesla k80显卡。 由于显存限制，batch size设置为32。
+
+### LJspeech
+![LJspeech train loss](https://github.com/PhyseChan/Tacotron2Poor/blob/master/train_loss.jpg)
