@@ -26,7 +26,11 @@ This project uses the TIMIT dataset to train Tacotron2 model and the data will b
 - [ ] Data Normalization (Currently using the json file created by Speechbrain)
 - [ ] Griffin-Lim
 
-## train loss
+## Training
+
+### Configuration
+
+This model was trained on a E5-2678 machine with a Tesla k80 GPU(12G). Because of the limitation of the GPU's memory, the batch size was reduced to 32 rather than 64 as written in the paper. 
 
 ### LJspeech
 ![LJspeech train loss](https://github.com/PhyseChan/Tacotron2Poor/blob/master/train_loss.jpg)
