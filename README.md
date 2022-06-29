@@ -29,6 +29,4 @@ This project uses the TIMIT dataset to train Tacotron2 model and the data will b
 ## train loss
 
 ### LJspeech
-(https://github.com/PhyseChan/Tacotron2Poor/blob/master/train_loss.jpg)
-
-[![loss on LJspeech]([图片地址](https://github.com/PhyseChan/Tacotron2Poor/train_loss.jpg))](https://github.com/PhyseChan/Tacotron2Poor/train_loss.jpg)
+![LJspeech train loss](https://github.com/PhyseChan/Tacotron2Poor/blob/master/train_loss.jpg)
