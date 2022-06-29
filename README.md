@@ -30,7 +30,11 @@ This project uses the TIMIT dataset to train Tacotron2 model and the data will b
 
 ### Configuration
 
-This model was trained on a E5-2678 machine with a Tesla k80 GPU(12G). Because of the limitation of the GPU's memory, the batch size was reduced to 32 rather than 64 as written in the paper. 
+This model was trained on a E5-2678 machine with a Tesla k80 GPU(12G). The batch size was reduced to 32 rather than 64 as written in the paper because of the limitation of the GPU's memory, 
 
 ### LJspeech
 ![LJspeech train loss](https://github.com/PhyseChan/Tacotron2Poor/blob/master/train_loss.jpg)
+
+
+`important⚠️` As the losses shown in the picture above, we can find that losses rapidly fluctuated around the 1800th iteration, which is report in the [papaer](https://arxiv.org/pdf/2204.13437.pdf). 
+
