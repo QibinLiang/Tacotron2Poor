@@ -25,3 +25,8 @@ This project uses the TIMIT dataset to train Tacotron2 model and the data will b
 - [x] Checkpoint saving and loading
 - [ ] Data Normalization (Currently using the json file created by Speechbrain)
 - [ ] Griffin-Lim
+
+## train loss
+
+### LJspeech
+[![loss on LJspeech]([图片地址](https://github.com/PhyseChan/Tacotron2Poor/blob/master/train_loss.jpg))](https://github.com/PhyseChan/Tacotron2Poor/blob/master/train_loss.jpg)
