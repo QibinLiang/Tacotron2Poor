@@ -32,6 +32,6 @@
 ![LJspeech train loss](https://github.com/PhyseChan/Tacotron2Poor/blob/master/train_loss.jpg)
 
 
-`重要⚠️` 如上图所示，损失值在第1800个迭代附近突然地升高，这种现象在论文[papaer](https://arxiv.org/pdf/2204.13437.pdf)也被提及
+`重要⚠️` 如上图所示，损失值在第1800个迭代附近突然地升高，这种现象在论文[paper](https://arxiv.org/pdf/2204.13437.pdf)也被提及
 。
 
