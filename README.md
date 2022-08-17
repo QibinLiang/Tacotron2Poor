@@ -35,6 +35,3 @@ This model was trained on a E5-2678 machine with a Tesla k80 GPU(12G). The batch
 ### LJspeech
 ![LJspeech train loss](https://github.com/PhyseChan/Tacotron2Poor/blob/master/train_loss.jpg)
 
-
-`important⚠️` As the losses shown in the picture above, we can find that losses rapidly fluctuated around the 1800th iteration, which is report in the [paper](https://arxiv.org/pdf/2204.13437.pdf). 
-
